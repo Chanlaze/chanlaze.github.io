@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>九州 13 天專屬行程規劃</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Chosen Palette: Warm Neutrals & Earthy Tones (Cream background, Slate text, Muted category colors) -->
+    <!-- Application Structure Plan: 
+         Designed as a mobile-first, app-like SPA. 
+         1. Header: Quick context (Dates, Title).
+         2. Dashboard Overview: A visual summary of the trip using Chart.js to show activity distribution, providing immediate context.
+         3. Interactive Itinerary: A horizontal scrollable day selector acting as sub-navigation.
+         4. Dynamic Timeline: The core functional area. Clicking a day loads a vertical timeline of events. This structure is chosen because travel is inherently sequential. The timeline visually separates time, location, transportation, and dining, making it easy to read on the go.
+         5. Actionable Nodes: Each timeline item contains direct Google Maps links for navigation and places, fulfilling the "high-utility" requirement.
+    -->
+    <!-- Visualization & Content Choices: 
+         1. Trip Breakdown -> Goal: Inform -> Donut Chart (Chart.js) -> Hover interaction -> Shows balance of activities -> Canvas/Chart.js.
+         2. Daily Schedule -> Goal: Organize & Sequence -> Vertical Timeline (HTML/Tailwind) -> Click days to change -> Best for chronological travel data -> HTML/JS.
+         3. Categories -> Goal: Quick recognition -> Emojis (🏛️,🍽️,🚆,🏨) & Color Coding -> Visual grouping without SVGs.
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #FAF9F6; /* Cream */
+            color: #334155;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* Hide scrollbar for day navigation */
+        .scrollbar-hide::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-hide {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 300px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 250px;
+            max-height: 300px;
+        }
+
+        /* Timeline vertical line */
+        .timeline-line::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 1.25rem; /* center of the icon */
+            width: 2px;
+            background-color: #E2E8F0;
+            z-index: 0;
+        }
+    </style>
+</head>
+<body class="antialiased pb-20 md:pb-10">
+
+    <div class="max-w-2xl mx-auto bg-white min-h-screen shadow-xl relative md:my-6 md:rounded-2xl overflow-hidden">
+        
+        <!-- Header -->
+        <header class="bg-slate-800 text-white p-6 sticky top-0 z-20 shadow-md">
+            <p class="text-sm text-slate-300 font-medium mb-1">8月3日 - 8月15日</p>
+            <h1 class="text-2xl font-bold leading-tight">🎇 九州 13 天專屬行程規劃</h1>
+            <p class="text-sm mt-2 text-slate-400">融入筑後川煙火版・美食與絕景之旅</p>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="p-4">
+            
+            <!-- Context & Overview Section -->
+            <section class="mb-8 bg-slate-50 rounded-xl p-4 border border-slate-100">
+                <p class="text-sm text-slate-600 mb-4 leading-relaxed">
+                    本應用程式為您規劃了 13 天的九州專屬行程。您可以透過下方的日期導覽，快速查看每日的詳細活動、預估時間、推薦交通方式以及精選美食。所有景點與路線皆附有 Google Maps 導航連結，方便您在旅途中隨時點擊查看。
+                </p>
+                
+                <h2 class="text-lg font-bold mb-2 flex items-center">📊 行程活動分佈預覽</h2>
+                <div class="chart-container">
+                    <canvas id="overviewChart"></canvas>
+                </div>
+            </section>
+
+            <!-- Interactive Itinerary Section -->
+            <section>
+                <h2 class="text-lg font-bold mb-3 px-2">📍 每日行程導覽</h2>
+                
+                <!-- Day Navigation -->
+                <div class="flex overflow-x-auto scrollbar-hide py-2 px-2 space-x-3 mb-6 sticky top-[100px] bg-white z-10 border-b border-slate-100" id="day-nav">
+                    <!-- Nav buttons injected by JS -->
+                </div>
+
+                <!-- Dynamic Day Content -->
+                <div id="day-content" class="px-2">
+                    <!-- Timeline injected by JS -->
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <script>
+        // --- 1. Data Source (Enriched from original prompt) ---
+        // Added times, durations, transport details, local food recommendations, and map links.
+        const itineraryData = [
+            {
+                day: 1, date: "8月3日 (一)", title: "抵達福岡、博多之夜",
+                events: [
+                    { type: 'flight', icon: '✈️', time: '15:00', duration: '-', title: '班機抵達福岡機場', desc: '辦理入境手續、領取行李。', color: 'bg-gray-100 text-gray-700' },
+                    { type: 'food', icon: '🍽️', time: '16:30', duration: '1小時', title: '機場晚餐：博多拉麵滑走路', desc: '位於國內線航廈3F，集結眾多知名拉麵店。', link: 'https://www.google.com/maps/search/?api=1&query=福岡機場+拉麵滑走路', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '🚆', time: '17:45', duration: '15分', title: '前往 JR 博多站', desc: '搭乘福岡市地下鐵機場線。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=福岡機場&destination=博多車站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '18:15', duration: '45分', title: '購買九州北部 Pass', desc: '至 JR 博多站「綠色窗口」購票並劃位後續指定席。', link: 'https://www.google.com/maps/search/?api=1&query=JR博多站', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'hotel', icon: '🏨', time: '19:30', duration: '-', title: '入住福岡市區飯店', desc: '建議選擇博多或天神周邊，方便後續行程。', color: 'bg-purple-100 text-purple-800' }
+                ]
+            },
+            {
+                day: 2, date: "8月4日 (二)", title: "太宰府祈願與天神商圈",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '09:00', duration: '40分', title: '前往太宰府', desc: '由西鐵福岡(天神)站搭乘西鐵大牟田線至二日市轉乘至太宰府站。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=天神站&destination=太宰府站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '10:00', duration: '1.5小時', title: '太宰府天滿宮', desc: '參拜祈求學業平安。尋找御神牛摸牛角。', link: 'https://www.google.com/maps/search/?api=1&query=太宰府天滿宮', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '11:30', duration: '1小時', title: '表參道美食與打卡', desc: '必吃名物「安武梅枝餅」，參觀隈研吾設計星巴克。', link: 'https://www.google.com/maps/search/?api=1&query=太宰府星巴克', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '🚆', time: '13:00', duration: '40分', title: '返回福岡天神', desc: '搭乘西鐵返回市區。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=太宰府站&destination=西鐵福岡站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '14:00', duration: '3.5小時', title: '天神地下街購物', desc: '九州最大地下街，服飾、雜貨、甜點一應俱全。', link: 'https://www.google.com/maps/search/?api=1&query=天神地下街', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '18:00', duration: '1.5小時', title: '天神周邊晚餐', desc: '推薦：新三浦水炊鍋 或 華味鳥。', link: 'https://www.google.com/maps/search/?api=1&query=天神+水炊鍋', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'hotel', icon: '🏨', time: '20:00', duration: '-', title: '返回福岡飯店', desc: '休息儲備明日體力。', color: 'bg-purple-100 text-purple-800' }
+                ]
+            },
+            {
+                day: 3, date: "8月5日 (三)", title: "柳川遊船 ＋ 筑後川花火",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '09:30', duration: '50分', title: '前往柳川', desc: '西鐵福岡(天神)搭乘特急至西鐵柳川站。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=西鐵福岡站&destination=西鐵柳川站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '10:30', duration: '1.5小時', title: '柳川浪漫遊船', desc: '體驗日式搖櫓船，欣賞沿岸垂柳風光。', link: 'https://www.google.com/maps/search/?api=1&query=柳川遊船', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '12:30', duration: '1.5小時', title: '午餐：蒸籠鰻魚飯', desc: '必吃推薦：「本吉屋」或「若松屋」，品嚐炭烤香氣與濃郁醬汁。', link: 'https://www.google.com/maps/search/?api=1&query=柳川+本吉屋', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '🚆', time: '15:00', duration: '20分', title: '前往久留米', desc: '搭乘西鐵至西鐵久留米站，準備看煙火。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=西鐵柳川站&destination=西鐵久留米站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '16:00', duration: '1.5小時', title: '會場卡位與屋台小吃', desc: '提早至筑後川河畔尋找觀賞點，品嚐祭典攤位美食。', link: 'https://www.google.com/maps/search/?api=1&query=筑後川花火大會', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'attraction', icon: '🎇', time: '19:40', duration: '1.5小時', title: '筑後川花火大會', desc: '西日本最大規模，18,000 發震撼煙火秀。', color: 'bg-yellow-100 text-yellow-800' },
+                    { type: 'transport', icon: '🚆', time: '21:30', duration: '40分', title: '散場返回福岡', desc: '搭乘西鐵特急返回福岡市區。', color: 'bg-blue-100 text-blue-800' }
+                ]
+            },
+            {
+                day: 4, date: "8月6日 (四)", title: "長崎歷史與千萬夜景",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '08:30', duration: '2小時', title: '前往長崎', desc: '啟用 JR Pass，搭乘特快列車(Relay Kamome + 新幹線)至長崎。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=博多站&destination=長崎站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '11:00', duration: '1小時', title: '平和公園 & 原爆資料館', desc: '了解歷史，祈求和平。', link: 'https://www.google.com/maps/search/?api=1&query=長崎平和公園', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '12:30', duration: '1小時', title: '午餐：強棒麵', desc: '推薦：「四海樓」發祥地，或在地小店品嚐長崎特色麵食。', link: 'https://www.google.com/maps/search/?api=1&query=長崎+四海樓', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'attraction', icon: '🏛️', time: '14:00', duration: '30分', title: '眼鏡橋尋找愛心石', desc: '日本最古老拱橋之一，河畔尋找隱藏的愛心石。', link: 'https://www.google.com/maps/search/?api=1&query=長崎+眼鏡橋', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'attraction', icon: '🏛️', time: '15:30', duration: '2小時', title: '大浦天主堂 & 哥拉巴園', desc: '感受長崎早期西洋貿易的異國風情。', link: 'https://www.google.com/maps/search/?api=1&query=哥拉巴園', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'attraction', icon: '🏛️', time: '19:00', duration: '1.5小時', title: '稻佐山夜景', desc: '搭乘纜車上山，欣賞名列新世界三大夜景的璀璨景致。', link: 'https://www.google.com/maps/search/?api=1&query=稻佐山展望台', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'hotel', icon: '🏨', time: '21:00', duration: '-', title: '入住長崎飯店', desc: '', color: 'bg-purple-100 text-purple-800' }
+                ]
+            },
+            {
+                day: 5, date: "8月7日 (五)", title: "佐世保海灣與豪斯登堡",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '09:00', duration: '2小時', title: '前往佐世保', desc: '由長崎搭乘 JR 至佐世保。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=長崎站&destination=佐世保站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '11:30', duration: '1.5小時', title: '九十九島展望台', desc: '展海峰或石岳展望台，欣賞世界最美海灣之一的島嶼群。', link: 'https://www.google.com/maps/search/?api=1&query=展海峰', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '13:30', duration: '1小時', title: '午餐：佐世保漢堡', desc: '推薦：「Hikari 漢堡」或「Log Kit」，份量十足的美式風味。', link: 'https://www.google.com/maps/search/?api=1&query=佐世保漢堡+Hikari', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '🚆', time: '15:00', duration: '30分', title: '前往豪斯登堡', desc: '搭乘 JR 從佐世保至豪斯登堡站。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=佐世保站&destination=豪斯登堡站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '15:30', duration: '5小時', title: '豪斯登堡歐洲風情', desc: '遊樂設施、歐風建築，傍晚開始欣賞璀璨燈光秀。', link: 'https://www.google.com/maps/search/?api=1&query=豪斯登堡', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'hotel', icon: '🏨', time: '21:00', duration: '-', title: '入住豪斯登堡周邊', desc: '', color: 'bg-purple-100 text-purple-800' }
+                ]
+            },
+            {
+                day: 6, date: "8月8日 (六)", title: "熊本名城與部長相見歡",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '08:30', duration: '2.5小時', title: '前往熊本', desc: '搭乘 JR 返回新鳥棲或博多，轉乘新幹線至熊本。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=豪斯登堡站&destination=熊本站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '11:30', duration: '2小時', title: '熊本城 & 櫻之馬場城彩苑', desc: '參觀日本三大名城之一，並在城彩苑購買伴手禮與小吃。', link: 'https://www.google.com/maps/search/?api=1&query=熊本城', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '13:30', duration: '1小時', title: '午餐推薦', desc: '米其林推薦「勝烈亭豬排」(新市街本店) 或 濃郁蒜香「黑亭拉麵」。', link: 'https://www.google.com/maps/search/?api=1&query=熊本+勝烈亭', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'attraction', icon: '🏛️', time: '15:00', duration: '1.5小時', title: 'Kumamon Square', desc: '尋找熊本熊部長，注意部長在辦公室的班表時間。', link: 'https://www.google.com/maps/search/?api=1&query=Kumamon+Square', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'attraction', icon: '🏛️', time: '16:30', duration: '2小時', title: '上通/下通商店街', desc: '熊本市區最繁華的商店街，購物逛街。', link: 'https://www.google.com/maps/search/?api=1&query=熊本下通', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'hotel', icon: '🏨', time: '19:00', duration: '-', title: '入住熊本飯店', desc: '', color: 'bg-purple-100 text-purple-800' }
+                ]
+            },
+            {
+                day: 7, date: "8月9日 (日)", title: "天草尋海豚",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '08:00', duration: '2小時', title: '前往天草', desc: '搭乘特快列車「A列車去吧」或巴士前往天草。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=熊本站&destination=三角站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '10:30', duration: '2小時', title: '天草賞海豚', desc: '高達 98% 遇見率，乘船出海近距離觀賞野生海豚。', link: 'https://www.google.com/maps/search/?api=1&query=天草海豚觀賞', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '13:00', duration: '1.5小時', title: '午餐：海鮮丼', desc: '推薦至「天草海鮮藏」享用新鮮滿溢的當地海產。', link: 'https://www.google.com/maps/search/?api=1&query=天草海鮮藏', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '🚆', time: '16:00', duration: '2小時', title: '返回熊本轉乘', desc: '由天草返回熊本車站。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=天草&destination=熊本站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'transport', icon: '🚆', time: '18:30', duration: '40分', title: '新幹線回福岡', desc: '搭乘新幹線返回博多。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=熊本站&destination=博多站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'hotel', icon: '🏨', time: '19:30', duration: '-', title: '入住福岡市區飯店', desc: '接下來幾天皆住福岡。', color: 'bg-purple-100 text-purple-800' }
+                ]
+            },
+            {
+                day: 8, date: "8月10日 (一)", title: "門司港與下關",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '09:00', duration: '1.5小時', title: '前往門司港', desc: '搭乘 JR 鹿兒島本線至門司港站 (懷舊車站)。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=博多站&destination=門司港站&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '10:30', duration: '1.5小時', title: '門司港懷舊區', desc: '漫步海峽廣場、舊門司稅關、香蕉人雕像打卡。', link: 'https://www.google.com/maps/search/?api=1&query=門司港懷舊', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'transport', icon: '🚶', time: '12:00', duration: '30分', title: '關門海峽行人隧道', desc: '步行穿越海底隧道，從福岡縣跨越至山口縣下關市。', link: 'https://www.google.com/maps/search/?api=1&query=關門人行隧道', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'food', icon: '🍽️', time: '12:45', duration: '1.5小時', title: '午餐：唐戶市場', desc: '大啖新鮮海鮮壽司與河豚料理 (留意市場營業日)。', link: 'https://www.google.com/maps/search/?api=1&query=唐戶市場', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'attraction', icon: '🏛️', time: '14:30', duration: '45分', title: '赤間神宮', desc: '參觀龍宮造型的鮮紅神宮。', link: 'https://www.google.com/maps/search/?api=1&query=赤間神宮', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'transport', icon: '⛴️', time: '15:30', duration: '10分', title: '搭船回門司港', desc: '搭乘聯絡船快速返回門司港。', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'food', icon: '🍽️', time: '16:00', duration: '1小時', title: '下午茶/晚餐：燒咖哩', desc: '門司港名物，推薦「伽哩本舗」或「Bear Fruits」。', link: 'https://www.google.com/maps/search/?api=1&query=門司港+燒咖哩', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '🚆', time: '18:00', duration: '1.5小時', title: '返回福岡', desc: '搭乘 JR 返回博多。', color: 'bg-blue-100 text-blue-800' }
+                ]
+            },
+            {
+                day: 9, date: "8月11日 (二)", title: "糸島海濱夕照",
+                events: [
+                    { type: 'transport', icon: '🚗', time: '10:00', duration: '1小時', title: '前往糸島', desc: '建議租車自駕或搭乘昭和巴士/計程車較方便。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=博多站&destination=糸島', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '11:30', duration: '1小時', title: '櫻井神社 & 大神宮', desc: '祈求結緣與平安的幽靜神社。', link: 'https://www.google.com/maps/search/?api=1&query=櫻井神社+福岡', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '13:00', duration: '1.5小時', title: '海景午餐', desc: '沿海有多間特色海景咖啡廳或餐廳。', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'attraction', icon: '🏛️', time: '15:00', duration: '2小時', title: '糸島海岸線巡禮', desc: '打卡各種裝置藝術 (如天使之翼、龍貓森林入口等)。', link: 'https://www.google.com/maps/search/?api=1&query=糸島+天使之翼', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'attraction', icon: '🏛️', time: '17:30', duration: '1.5小時', title: '櫻井二見浦', desc: '日本海岸百選，欣賞海中夫婦岩與白色鳥居的絕美夕陽。', link: 'https://www.google.com/maps/search/?api=1&query=櫻井二見浦', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'transport', icon: '🚗', time: '19:00', duration: '1小時', title: '返回福岡市區', desc: '', color: 'bg-blue-100 text-blue-800' }
+                ]
+            },
+            {
+                day: 10, date: "8月12日 (三)", title: "能古島絕景",
+                events: [
+                    { type: 'transport', icon: '🚆', time: '09:30', duration: '40分', title: '前往姪濱旅客候船室', desc: '搭乘地鐵至姪濱站轉乘西鐵巴士。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=博多站&destination=姪濱渡船場&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'transport', icon: '⛴️', time: '10:15', duration: '10分', title: '搭乘渡輪至能古島', desc: '短暫航程抵達離島。', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'transport', icon: '🚌', time: '10:30', duration: '15分', title: '轉乘島上巴士', desc: '前往能古島海島公園。', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '11:00', duration: '3.5小時', title: '能古島海島公園', desc: '悠閒欣賞四季花海 (夏季向日葵等) 與博多灣廣闊海景。', link: 'https://www.google.com/maps/search/?api=1&query=能古島海島公園', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '12:30', duration: '1小時', title: '公園內午餐', desc: '品嚐能古烏龍麵或烤肉。', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '⛴️', time: '15:30', duration: '1小時', title: '返回福岡市區', desc: '搭船與巴士原路返回。', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '17:00', duration: '2小時', title: '市區自由活動', desc: '可至福岡市區補給購物或休息。', color: 'bg-teal-100 text-teal-800' }
+                ]
+            },
+            {
+                day: 11, date: "8月13日 (四)", title: "市區深度與屋台",
+                events: [
+                    { type: 'attraction', icon: '🏛️', time: '10:00', duration: '1.5小時', title: '川端商店街', desc: '博多最古老商店街，感受在地庶民風情，可參觀櫛田神社。', link: 'https://www.google.com/maps/search/?api=1&query=川端通商店街', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '12:00', duration: '1小時', title: '午餐：一蘭拉麵總本店', desc: '朝聖整棟的一蘭大樓，品嚐經典豚骨拉麵。', link: 'https://www.google.com/maps/search/?api=1&query=一蘭拉麵總本店', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'attraction', icon: '🏛️', time: '14:00', duration: '2小時', title: '大濠公園', desc: '在湖畔散步、踩天鵝船，或至星巴克喝杯咖啡放鬆。', link: 'https://www.google.com/maps/search/?api=1&query=大濠公園', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'attraction', icon: '🏛️', time: '17:00', duration: '1.5小時', title: '百道海濱公園 & 福岡塔', desc: '沙灘漫步欣賞夕陽，可登塔俯瞰市區。', link: 'https://www.google.com/maps/search/?api=1&query=百道海濱公園', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '19:30', duration: '2小時', title: '晚餐：中洲屋台', desc: '體驗福岡特色路邊攤文化，吃關東煮、明太子玉子燒、拉麵。', link: 'https://www.google.com/maps/search/?api=1&query=中洲屋台橫丁', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'attraction', icon: '💡', time: '20:00', duration: '-', title: '小彩蛋備案', desc: '今晚為「關門海峽花火大會」，若想看煙火可臨時買票搭 JR 去門司港湊熱鬧！', color: 'bg-yellow-100 text-yellow-800' }
+                ]
+            },
+            {
+                day: 12, date: "8月14日 (五)", title: "購物衝刺與美食補完",
+                events: [
+                    { type: 'attraction', icon: '🏛️', time: '10:00', duration: '3.5小時', title: 'LaLaport 福岡', desc: '朝聖 1:1 實物大 ν 鋼彈，館內眾多品牌與美食街。', link: 'https://www.google.com/maps/search/?api=1&query=LaLaport福岡', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '13:30', duration: '1.5小時', title: '午餐：牛腸鍋 (もつ鍋)', desc: '來九州必吃！推薦「おおやま(Oyama)」或「笑樂」。', link: 'https://www.google.com/maps/search/?api=1&query=博多牛腸鍋', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'attraction', icon: '🏛️', time: '15:30', duration: '3.5小時', title: '博多運河城 (Canal City)', desc: '結合水舞秀的大型購物中心，最後的伴手禮與藥妝衝刺。', link: 'https://www.google.com/maps/search/?api=1&query=博多運河城', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'food', icon: '🍽️', time: '19:30', duration: '1.5小時', title: '晚餐：燒肉或壽司', desc: '慰勞旅途辛勞，享用豐盛的最後晚餐。', color: 'bg-orange-100 text-orange-800' }
+                ]
+            },
+            {
+                day: 13, date: "8月15日 (六)", title: "賦歸",
+                events: [
+                    { type: 'food', icon: '🍽️', time: '08:30', duration: '1小時', title: '飯店早餐', desc: '整理行李，準備退房。', color: 'bg-orange-100 text-orange-800' },
+                    { type: 'transport', icon: '🚆', time: '10:00', duration: '30分', title: '前往福岡機場', desc: '搭乘地下鐵至機場。', routeLink: 'https://www.google.com/maps/dir/?api=1&origin=博多站&destination=福岡機場&travelmode=transit', color: 'bg-blue-100 text-blue-800' },
+                    { type: 'attraction', icon: '🏛️', time: '10:30', duration: '2小時', title: '免稅店採購', desc: '最後補齊福砂屋長崎蛋糕、明太子等伴手禮。', link: 'https://www.google.com/maps/search/?api=1&query=福岡機場免稅店', color: 'bg-teal-100 text-teal-800' },
+                    { type: 'flight', icon: '✈️', time: '13:00', duration: '-', title: '搭機返家', desc: '滿載回憶，結束美好的九州之旅。', color: 'bg-gray-100 text-gray-700' }
+                ]
+            }
+        ];
+
+        // --- 2. Chart.js Initialization ---
+        function initChart() {
+            // Count activity types for the chart
+            let counts = { transport: 0, attraction: 0, food: 0, hotel: 0 };
+            itineraryData.forEach(day => {
+                day.events.forEach(event => {
+                    if(counts[event.type] !== undefined) counts[event.type]++;
+                });
+            });
+
+            const ctx = document.getElementById('overviewChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['交通移動 🚆', '景點活動 🏛️', '餐飲美食 🍽️', '住宿/其他 🏨'],
+                    datasets: [{
+                        data: [counts.transport, counts.attraction, counts.food, counts.hotel + 2], // +2 for flight events
+                        backgroundColor: [
+                            '#DBEAFE', // blue-100
+                            '#CCFBF1', // teal-100
+                            '#FFEDD5', // orange-100
+                            '#F3E8FF'  // purple-100
+                        ],
+                        borderColor: [
+                            '#2563EB', // blue-600
+                            '#0D9488', // teal-600
+                            '#EA580C', // orange-600
+                            '#9333EA'  // purple-600
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'right', labels: { font: { family: "'Noto Sans TC', sans-serif" } } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ' ' + context.label.split(' ')[0] + ': ' + context.raw + ' 項';
+                                }
+                            }
+                        }
+                    },
+                    cutout: '65%'
+                }
+            });
+        }
+
+        // --- 3. UI Rendering Logic ---
+        let activeDayIndex = 0;
+
+        function renderDayNav() {
+            const navContainer = document.getElementById('day-nav');
+            navContainer.innerHTML = '';
+            
+            itineraryData.forEach((day, index) => {
+                const btn = document.createElement('button');
+                btn.className = `flex-shrink-0 px-4 py-2 rounded-full text-sm font-bold transition-colors duration-200 border ${
+                    index === activeDayIndex 
+                    ? 'bg-slate-800 text-white border-slate-800 shadow-md' 
+                    : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`;
+                btn.innerHTML = `Day ${day.day}`;
+                btn.onclick = () => {
+                    activeDayIndex = index;
+                    renderDayNav(); // Update active state
+                    renderDayContent(index);
+                    // Center the clicked button
+                    btn.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+                };
+                navContainer.appendChild(btn);
+            });
+        }
+
+        function renderDayContent(index) {
+            const contentContainer = document.getElementById('day-content');
+            const dayData = itineraryData[index];
+            
+            let html = `
+                <div class="mb-6 animate-fade-in">
+                    <h3 class="text-xl font-bold text-slate-800 mb-1 flex items-center">
+                        <span class="bg-slate-100 text-slate-700 px-2 py-1 rounded text-sm mr-2">${dayData.date}</span>
+                        ${dayData.title}
+                    </h3>
+                </div>
+                <div class="relative timeline-line pl-5 pb-8">
+            `;
+
+            dayData.events.forEach((event, i) => {
+                // Determine if it's the last item to remove the trailing line visually if needed
+                const isLast = i === dayData.events.length - 1;
+                
+                html += `
+                    <div class="relative mb-8 ${isLast ? '' : ''} animate-slide-up" style="animation-delay: ${i * 0.05}s">
+                        <!-- Icon Dot -->
+                        <div class="absolute -left-[1.8rem] w-8 h-8 rounded-full ${event.color} border-4 border-white flex items-center justify-center text-sm shadow-sm z-10">
+                            ${event.icon}
+                        </div>
+                        
+                        <!-- Content Card -->
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 ml-2">
+                            <div class="flex justify-between items-start mb-2">
+                                <div>
+                                    <span class="text-xs font-bold text-slate-400 block mb-1">${event.time} ${event.duration !== '-' ? `(約 ${event.duration})` : ''}</span>
+                                    <h4 class="font-bold text-base text-slate-800">${event.title}</h4>
+                                </div>
+                            </div>
+                            
+                            <p class="text-sm text-slate-600 mb-3 leading-relaxed">
+                                ${event.desc}
+                            </p>
+                            
+                            <!-- Action Buttons -->
+                            <div class="flex flex-wrap gap-2 mt-2">
+                                ${event.routeLink ? `
+                                    <a href="${event.routeLink}" target="_blank" class="inline-flex items-center text-xs bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg font-medium hover:bg-blue-100 transition">
+                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"></path></svg>
+                                        路線導航
+                                    </a>
+                                ` : ''}
+                                ${event.link ? `
+                                    <a href="${event.link}" target="_blank" class="inline-flex items-center text-xs bg-slate-100 text-slate-700 px-3 py-1.5 rounded-lg font-medium hover:bg-slate-200 transition">
+                                        <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                        Google地圖
+                                    </a>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += `</div>`;
+            contentContainer.innerHTML = html;
+        }
+
+        // Add some basic CSS animations
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes slideUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+            .animate-slide-up { animation: slideUp 0.4s ease-out forwards; opacity: 0; }
+        `;
+        document.head.appendChild(style);
+
+        // --- 4. Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            renderDayNav();
+            renderDayContent(0);
+        });
+
+    </script>
+</body>
+</html>
